@@ -2,6 +2,11 @@ import { defineConfig, normalizePath } from 'vite';
 import path from 'path';
 import react from '@vitejs/plugin-react-swc';
 
+// Polyfill __dirname for ESM
+import { fileURLToPath } from 'url';
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
 const createConfig = async (outDir: string) => ({
   plugins: [
     (await import('vite-plugin-static-copy')).viteStaticCopy({

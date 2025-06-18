@@ -1,0 +1,23 @@
+{
+  "build": {
+    "appId": "com.tuvtuber.app",
+    "productName": "TuVTuber",
+    "files": [
+      "main.js",
+      "preload.js",
+      "frontend/dist/**/*",
+      "dist/backend.exe"
+    ],
+    "extraResources": [
+      {
+        "from": "models/",
+        "to": "models",
+        "filter": ["**/*"]
+      }
+    ],
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false
+    }
+  }
+}

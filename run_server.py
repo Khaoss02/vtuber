@@ -3,13 +3,30 @@ import sys
 import atexit
 import argparse
 from pathlib import Path
-import tomli
-import uvicorn
-from loguru import logger
+
+try:
+    import tomli
+except ImportError:
+    print("ERROR: El módulo 'tomli' no está instalado. Instálalo con: pip install tomli")
+    sys.exit(1)
+
+try:
+    import uvicorn
+except ImportError:
+    print("ERROR: El módulo 'uvicorn' no está instalado. Instálalo con: pip install uvicorn")
+    sys.exit(1)
+
+try:
+    from loguru import logger
+except ImportError:
+    print("ERROR: El módulo 'loguru' no está instalado. Instálalo con: pip install loguru")
+    sys.exit(1)
+
 from upgrade import sync_user_config, select_language
 from src.open_llm_vtuber.server import WebSocketServer
 from src.open_llm_vtuber.config_manager import Config, read_yaml, validate_config
 
+# Configuramos rutas para cachés y modelos
 os.environ["HF_HOME"] = str(Path(__file__).parent / "models")
 os.environ["MODELSCOPE_CACHE"] = str(Path(__file__).parent / "models")
 
@@ -22,7 +39,7 @@ def get_version() -> str:
 
 def init_logger(console_log_level: str = "INFO") -> None:
     logger.remove()
-    # Console output
+    # Salida consola
     logger.add(
         sys.stderr,
         level=console_log_level,
@@ -30,7 +47,8 @@ def init_logger(console_log_level: str = "INFO") -> None:
         colorize=True,
     )
 
-    # File output
+    # Salida a fichero
+    Path("logs").mkdir(exist_ok=True)  # Aseguramos que la carpeta logs existe
     logger.add(
         "logs/debug_{time:YYYY-MM-DD}.log",
         rotation="10 MB",
@@ -45,9 +63,7 @@ def init_logger(console_log_level: str = "INFO") -> None:
 def parse_args():
     parser = argparse.ArgumentParser(description="Open-LLM-VTuber Server")
     parser.add_argument("--verbose", action="store_true", help="Enable verbose logging")
-    parser.add_argument(
-        "--hf_mirror", action="store_true", help="Use Hugging Face mirror"
-    )
+    parser.add_argument("--hf_mirror", action="store_true", help="Use Hugging Face mirror")
     return parser.parse_args()
 
 
@@ -55,19 +71,21 @@ def parse_args():
 def run(console_log_level: str):
     init_logger(console_log_level)
     logger.info(f"Open-LLM-VTuber, version v{get_version()}")
-    # Sync user config with default config
+
+    # Sincronizamos configuración del usuario con la por defecto
     try:
         sync_user_config(logger=logger, lang=select_language())
     except Exception as e:
         logger.error(f"Error syncing user config: {e}")
 
+    # Registro de función para limpiar caché al salir
     atexit.register(WebSocketServer.clean_cache)
 
-    # Load configurations from yaml file
+    # Cargamos configuración desde YAML y validamos
     config: Config = validate_config(read_yaml("conf.yaml"))
     server_config = config.system_config
 
-    # Initialize and run the WebSocket server
+    # Inicializamos y ejecutamos el servidor WebSocket con uvicorn
     server = WebSocketServer(config=config)
     uvicorn.run(
         app=server.app,
@@ -81,10 +99,10 @@ if __name__ == "__main__":
     args = parse_args()
     console_log_level = "DEBUG" if args.verbose else "INFO"
     if args.verbose:
-        logger.info("Running in verbose mode")
+        print("Ejecutando en modo verbose (depuración detallada)")
     else:
-        logger.info(
-            "Running in standard mode. For detailed debug logs, use: uv run run_server.py --verbose"
+        print(
+            "Ejecutando en modo estándar. Para logs detallados usa: uv run run_server.py --verbose"
         )
     if args.hf_mirror:
         os.environ["HF_ENDPOINT"] = "https://hf-mirror.com"
