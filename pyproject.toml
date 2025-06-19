@@ -110,4 +110,14 @@ dependencies = [
     "uvicorn[standard]>=0.33.0",
     "websocket-client>=1.8.0",
     "win32-setctime",
+
+    # Added new dependencies:
+    "pgvector",
+    "psycopg2-binary",
+    "discord.py",
+    "slack-sdk",
+    "twitchio",
+    "google-api-python-client",
+    "oauth2client",
+    "openai-agents",
 ]

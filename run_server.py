@@ -119,4 +119,22 @@ def main():
                 log_level="debug" if args.verbose else "info")
 
 if __name__ == "__main__":
-    main()
+    import threading, time
+
+    threading.Thread(target=main, daemon=True).start()
+
+    from open_llm_vtuber.connectors.discord_connector import run_discord
+    from open_llm_vtuber.connectors.slack_connector   import run_slack
+    from open_llm_vtuber.connectors.stream_bot        import run_stream_bot
+    from open_llm_vtuber.connectors.youtube_connector import run_youtube
+
+    threading.Thread(target=run_discord,    daemon=True).start()
+    threading.Thread(target=run_slack,      daemon=True).start()
+    threading.Thread(target=run_stream_bot, daemon=True).start()
+    threading.Thread(target=run_youtube,    daemon=True).start()
+
+    try:
+        while True:
+            time.sleep(60)
+    except KeyboardInterrupt:
+        print("Stopping all connectors …")
