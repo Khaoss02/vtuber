@@ -24,6 +24,8 @@ dependencies = [
     "duckdb>=0.8.0,<0.9.0",
     "edge-tts>=7.0.0",
     "fastapi[standard]>=0.115.9",
+    "faiss-cpu",
+    "fer",
     "filelock",
     "flatbuffers",
     "fsspec",
@@ -38,6 +40,7 @@ dependencies = [
     "kubernetes",
     "langdetect>=1.0.9",
     "langchain==0.2.4",
+    "librosa",
     "llama-index==0.12.42",
     "llama-index-agent-openai",
     "llama-index-cli",
@@ -57,20 +60,26 @@ dependencies = [
     "numpy>=1.26.4,<2",
     "onnxruntime>=1.20.1",
     "openai>=1.57.4",
+    "openai-whisper",
+    "opencv-python-headless",
     "opentelemetry-api",
     "opentelemetry-exporter-otlp-proto-grpc",
     "opentelemetry-instrumentation-fastapi",
     "opentelemetry-sdk",
     "overrides",
+    "phonemizer",
     "pillow",
     "posthog",
     "pre-commit>=4.1.0",
+    "praat-parselmouth",
     "protobuf",
-    "pydub>=0.25.1",
+    "pyaudio",
+    "pyAudioAnalysis",
+    "pyttsx3>=2.98",
+    "python-dotenv",
     "pypiwin32",
     "pypika",
     "pysbd>=0.3.4",
-    "pyttsx3>=2.98",
     "pywin32",
     "pyyaml>=6.0.2",
     "requests>=2.32.3",
@@ -102,14 +111,3 @@ dependencies = [
     "websocket-client>=1.8.0",
     "win32-setctime",
 ]
-
-[tool.pixi.project]
-channels = ["conda-forge"]
-platforms = ["win-64", "linux-64"]
-
-[tool.pixi.pypi-dependencies]
-open-llm-vtuber = { path = ".", editable = true }
-
-[tool.pixi.dependencies]
-cudnn = ">=8.0,<9"
-cudatoolkit = ">=11.0,<12"

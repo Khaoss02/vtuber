@@ -1,15 +1,15 @@
-"""ChatAgent with advanced memory and personality summary integration"""
+"""ChatAgent with advanced memory and personality integration"""
 
 from __future__ import annotations
-import logging
-import os
-from typing import Optional
+import logging, os
+from typing import Optional, Dict, Any
 
 from llama_index import GPTSimpleVectorIndex, LLMPredictor, PromptHelper, ServiceContext
 from llama_index.llms.openai import OpenAI
-from open_llm_vtuber.memory.memory_manager import MemoryManager
 
-logging.basicConfig(level=logging.INFO)
+from open_llm_vtuber.memory.memory_manager import MemoryManager
+from open_llm_vtuber.personality import Personality
+
 logger = logging.getLogger(__name__)
 
 class ChatAgent:
@@ -25,36 +25,34 @@ class ChatAgent:
         if openai_api_key:
             os.environ["OPENAI_API_KEY"] = openai_api_key
 
-        prompt_helper = PromptHelper(max_input_size=4096, num_output=512, max_chunk_overlap=20)
-        llm_predictor = LLMPredictor(llm=OpenAI(temperature=0.7, model_name="gpt-4o-mini"))
-        self.service_context = ServiceContext.from_defaults(
-            llm_predictor=llm_predictor, prompt_helper=prompt_helper
+        ph = PromptHelper(4096, 512, 20)
+        llmp = LLMPredictor(llm=OpenAI(temperature=0.7, model_name="gpt-4o-mini"))
+        self.service_ctx = ServiceContext.from_defaults(
+            llm_predictor=llmp, prompt_helper=ph
         )
 
         try:
-            self.index = GPTSimpleVectorIndex.load_from_disk(index_path, service_context=self.service_context)
+            self.index = GPTSimpleVectorIndex.load_from_disk(
+                index_path, service_context=self.service_ctx
+            )
             logger.info("Vector index loaded.")
-        except Exception as exc:
-            logger.warning(f"No vector index: {exc}. Continuing without RAG.")
+        except Exception as e:
+            logger.warning("No vector index: %s", e)
             self.index = None
 
         self.memory = MemoryManager(
-            episodic_path=episodic_path,
-            semantic_path=semantic_path,
-            semantic_emb_path=semantic_emb_path,
-            summary_path=summary_path,
+            episodic_path, semantic_path, semantic_emb_path, summary_path
         )
+        self.personality = Personality()
 
-    def chat(self, user_input: str) -> str:
-        # Obtén resumen y perfil
+    def chat(
+        self,
+        user_input: str,
+        context: Optional[Dict[str, Any]] = None
+    ) -> str:
         summary = self.memory.latest_summary()
         profile = self.memory.latest_profile()
-        if summary:
-            logger.info(f"Latest summary:\n{summary}")
-        if profile:
-            logger.info(f"Personality profile:\n{profile['profile']}")
 
-        # Construye prompt enriquecido
         enriched = ""
         if profile:
             enriched += f"VTuber profile:\n{profile['profile']}\n\n"
@@ -62,31 +60,25 @@ class ChatAgent:
             enriched += f"Recent summary:\n{summary}\n\n"
         enriched += f"User says: {user_input}\nVTuber responds:"
 
-        # Genera respuesta (RAG o LLM)
         if self.index:
             try:
                 resp = self.index.query(enriched)
-                response_text = resp.response
+                text = resp.response
             except Exception:
-                response_text = self._call_llm(enriched)
+                text = self._call_llm(enriched)
         else:
-            response_text = self._call_llm(enriched)
+            text = self._call_llm(enriched)
 
-        # Guarda en memoria avanzada
-        episode = {"user_input": user_input, "ai_response": response_text}
+        styled = self.personality.apply_personality_to_response(text)
+
+        episode = {
+            "user_input": user_input,
+            "ai_response": styled,
+            "context": context or {}
+        }
         self.memory.save_episode(episode)
 
-        return response_text
+        return styled
 
     def _call_llm(self, prompt: str) -> str:
-        return self.service_context.llm_predictor.llm.complete(prompt).text
-
-if __name__ == "__main__":
-    api_key = os.getenv("OPENAI_API_KEY")
-    agent = ChatAgent(openai_api_key=api_key)
-    print("VTuber ready. Type 'exit' to quit.")
-    while True:
-        msg = input("You: ")
-        if msg.lower() in {"exit", "quit", "salir"}:
-            break
-        print("VTuber:", agent.chat(msg))
+        return self.service_ctx.llm_predictor.llm.complete(prompt).text

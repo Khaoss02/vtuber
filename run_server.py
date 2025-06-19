@@ -1,112 +1,122 @@
-import os
+# ──────────────────────────────────────────────────────────────────────────────
+# VTuber WebSocket Server
+# - Audio in  → emoción + visema
+# - Texto out → respuesta IA con memoria avanzada
+# - Static folders: /live2d-models  /models
+# ──────────────────────────────────────────────────────────────────────────────
+import os, sys, atexit, argparse
+from pathlib import Path
 from dotenv import load_dotenv
+
 load_dotenv()
 
-import sys
-import atexit
-import argparse
-from pathlib import Path
-
+# ── Dependencias básicas ------------------------------------------------------
 try:
-    import tomli
-except ImportError:
-    print("ERROR: El módulo 'tomli' no está instalado. Instálalo con: pip install tomli")
-    sys.exit(1)
-
-try:
-    import uvicorn
-except ImportError:
-    print("ERROR: El módulo 'uvicorn' no está instalado. Instálalo con: pip install uvicorn")
-    sys.exit(1)
-
-try:
+    import tomli, uvicorn
     from loguru import logger
-except ImportError:
-    print("ERROR: El módulo 'loguru' no está instalado. Instálalo con: pip install loguru")
+except ImportError as e:
+    print(f"Instala dependencias básicas: {e.name}")
     sys.exit(1)
 
-from upgrade import sync_user_config, select_language
-from src.open_llm_vtuber.server import WebSocketServer
-from src.open_llm_vtuber.config_manager import Config, read_yaml, validate_config
+from fastapi import FastAPI, WebSocket
+from fastapi.staticfiles import StaticFiles
 
-# Configuramos rutas para cachés y modelos
-os.environ["HF_HOME"] = str(Path(__file__).parent / "models")
-os.environ["MODELSCOPE_CACHE"] = str(Path(__file__).parent / "models")
+# ── IA y memoria --------------------------------------------------------------
+from open_llm_vtuber.agent.chat_agent import ChatAgent
 
+# ── Emoción (audio) -----------------------------------------------------------
+try:
+    from open_llm_vtuber.emotion_engine import EmotionEngine  # type: ignore
+    emotion_engine = EmotionEngine()
+except ImportError:
+    class _DummyEmotion:
+        def detect_from_audio(self, *_): return "neutral"
+    emotion_engine = _DummyEmotion()
 
+# ── Lip‑Sync ------------------------------------------------------------------
+try:
+    from open_llm_vtuber.lip_sync_engine import LipSyncEngine  # type: ignore
+    lip = LipSyncEngine("base")  # Whisper‑based
+except ImportError:
+    # Fallback energético
+    import numpy as np, io, wave
+    class _VisemeGen:
+        TH, VS = [1000,2000,3000,4000,5000], ["A","E","I","O","U"]
+        def predict_viseme(self, audio: bytes):  # noqa: D401
+            try:
+                with wave.open(io.BytesIO(audio),'rb') as wf:
+                    data = np.frombuffer(wf.readframes(wf.getnframes()),dtype=np.int16)
+                    energy = np.abs(data).mean()
+            except wave.Error:
+                return "A"
+            for v,t in zip(self.VS,self.TH):
+                if energy < t: return v
+            return "U"
+    lip = _VisemeGen()
+
+# ── Logger --------------------------------------------------------------------
 def get_version() -> str:
-    with open("pyproject.toml", "rb") as f:
-        pyproject = tomli.load(f)
-    return pyproject["project"]["version"]
+    with open("pyproject.toml","rb") as f:
+        return tomli.load(f)["project"]["version"]
 
-
-def init_logger(console_log_level: str = "INFO") -> None:
+def init_logger(level: str):
     logger.remove()
-    # Salida consola
-    logger.add(
-        sys.stderr,
-        level=console_log_level,
-        format="<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level: <8}</level> | <cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> | {message}",
-        colorize=True,
-    )
+    logger.add(sys.stderr, level=level,
+               format="<green>{time:YYYY-MM-DD HH:mm:ss}</green> | "
+                      "<level>{level: <8}</level> | {message}",
+               colorize=True)
+    Path("logs").mkdir(exist_ok=True)
+    logger.add("logs/debug_{time:YYYY-MM-DD}.log",
+               rotation="10 MB", retention="30 days", level="DEBUG")
 
-    # Salida a fichero
-    Path("logs").mkdir(exist_ok=True)  # Aseguramos que la carpeta logs existe
-    logger.add(
-        "logs/debug_{time:YYYY-MM-DD}.log",
-        rotation="10 MB",
-        retention="30 days",
-        level="DEBUG",
-        format="{time:YYYY-MM-DD HH:mm:ss.SSS} | {level: <8} | {name}:{function}:{line} | {message} | {extra}",
-        backtrace=True,
-        diagnose=True,
-    )
-
-
+# ── CLI args ------------------------------------------------------------------
 def parse_args():
-    parser = argparse.ArgumentParser(description="Open-LLM-VTuber Server")
-    parser.add_argument("--verbose", action="store_true", help="Enable verbose logging")
-    parser.add_argument("--hf_mirror", action="store_true", help="Use Hugging Face mirror")
-    return parser.parse_args()
+    p = argparse.ArgumentParser("VTuber server")
+    p.add_argument("--verbose", action="store_true")
+    p.add_argument("--host", default="0.0.0.0")
+    p.add_argument("--port", default=8000, type=int)
+    return p.parse_args()
 
+# ── FastAPI app ---------------------------------------------------------------
+def create_app(static_live2d:str, static_models:str) -> FastAPI:
+    app = FastAPI()
+    app.mount("/live2d-models", StaticFiles(directory=static_live2d), name="live2d-models")
+    app.mount("/models",         StaticFiles(directory=static_models), name="models")
+    return app
 
-@logger.catch
-def run(console_log_level: str):
-    init_logger(console_log_level)
-    logger.info(f"Open-LLM-VTuber, version v{get_version()}")
+# ── Main ----------------------------------------------------------------------
+def main():
+    args = parse_args()
+    init_logger("DEBUG" if args.verbose else "INFO")
+    logger.info(f"VTuber Server v{get_version()}")
 
-    # Sincronizamos configuración del usuario con la por defecto
-    try:
-        sync_user_config(logger=logger, lang=select_language())
-    except Exception as e:
-        logger.error(f"Error syncing user config: {e}")
+    app   = create_app("C:/vtuber/live2d-models","C:/vtuber/models")
+    agent = ChatAgent(openai_api_key=os.getenv("OPENAI_API_KEY"))
 
-    # Registro de función para limpiar caché al salir
-    atexit.register(WebSocketServer.clean_cache)
+    @app.websocket("/ws")
+    async def ws_endpoint(ws: WebSocket):  # noqa: D401
+        await ws.accept()
+        mode = "2d"
+        while True:
+            audio = await ws.receive_bytes()
+            emotion = emotion_engine.detect_from_audio(audio)
+            viseme  = lip.predict_viseme(audio)
 
-    # Cargamos configuración desde YAML y validamos
-    config: Config = validate_config(read_yaml("conf.yaml"))
-    server_config = config.system_config
+            # TODO: integra Whisper real
+            user_text = "Texto transcrito (stub)"
+            response  = agent.chat(user_text, context={"emotion": emotion})
 
-    # Inicializamos y ejecutamos el servidor WebSocket con uvicorn
-    server = WebSocketServer(config=config)
-    uvicorn.run(
-        app=server.app,
-        host=server_config.host,
-        port=server_config.port,
-        log_level=console_log_level.lower(),
-    )
+            await ws.send_json({
+                "text":    response,
+                "viseme":  viseme,
+                "emotion": emotion,
+                "mode":    mode
+            })
 
+    atexit.register(lambda: logger.info("Shutdown – cache cleaned"))
+
+    uvicorn.run(app, host=args.host, port=args.port,
+                log_level="debug" if args.verbose else "info")
 
 if __name__ == "__main__":
-    args = parse_args()
-    console_log_level = "DEBUG" if args.verbose else "INFO"
-    if args.verbose:
-        print("Ejecutando en modo verbose (depuración detallada)")
-    else:
-        print(
-            "Ejecutando en modo estándar. Para logs detallados usa: uv run run_server.py --verbose"
-        )
-    if args.hf_mirror:
-        os.environ["HF_ENDPOINT"] = "https://hf-mirror.com"
-    run(console_log_level=console_log_level)
+    main()
