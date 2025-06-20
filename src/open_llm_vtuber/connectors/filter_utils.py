@@ -3,7 +3,8 @@ Shared heuristics to decide if a chat line is interesting enough
 to forward to the LLM.
 """
 
-import re, time
+import re
+import time
 from collections import defaultdict
 
 QUESTION = re.compile(r"\?")

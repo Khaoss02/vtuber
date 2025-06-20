@@ -1,4 +1,5 @@
-import json, os
+import json
+import os
 from datetime import datetime
 from typing import Dict, List, Optional
 
@@ -7,12 +8,12 @@ class EpisodicMemoryManager:
         self.file_path = file_path
         self.episodes: List[Dict] = self._load()
 
-    def save_episode(self, user_input: str, ai_response: str, context: Optional[Dict]=None):
+    def save_episode(self, user_input: str, ai_response: str, context: Optional[Dict] = None):
         ep = {
             "timestamp": datetime.now().isoformat(),
             "user_input": user_input,
             "ai_response": ai_response,
-            "context": context or {}
+            "context": context or {},
         }
         self.episodes.append(ep)
         self._save()
@@ -28,11 +29,11 @@ class EpisodicMemoryManager:
         if os.path.exists(self.file_path):
             try:
                 return json.load(open(self.file_path, "r", encoding="utf-8"))
-            except:
+            except Exception:
                 os.rename(self.file_path, self.file_path + ".broken")
         return []
 
     def _save(self):
         os.makedirs(os.path.dirname(self.file_path), exist_ok=True)
-        json.dump(self.episodes, open(self.file_path, "w", encoding="utf-8"),
-                  indent=2, ensure_ascii=False)
+        with open(self.file_path, "w", encoding="utf-8") as f:
+            json.dump(self.episodes, f, indent=2, ensure_ascii=False)

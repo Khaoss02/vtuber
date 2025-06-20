@@ -1,7 +1,8 @@
 """ChatAgent with advanced memory and personality integration"""
 
 from __future__ import annotations
-import logging, os
+import logging
+import os
 from typing import Optional, Dict, Any
 
 from llama_index import GPTSimpleVectorIndex, LLMPredictor, PromptHelper, ServiceContext
