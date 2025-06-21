@@ -1,73 +1,74 @@
-/* eslint-disable react/jsx-no-constructed-context-values */
-import React, { useContext, useCallback } from 'react';
-import { wsService } from '@/services/websocket-service';
-import { useLocalStorage } from '@/hooks/utils/use-local-storage';
+import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
+import { wsService, MessageEvent } from '../services/websocket-service';
 
-const DEFAULT_WS_URL = 'ws://127.0.0.1:12393/client-ws';
-const DEFAULT_BASE_URL = 'http://127.0.0.1:12393';
-
-export interface HistoryInfo {
-  uid: string;
-  latest_message: {
-    role: 'human' | 'ai';
-    timestamp: string;
-    content: string;
-  } | null;
-  timestamp: string | null;
-}
+type WsState = 'CONNECTING' | 'OPEN' | 'CLOSING' | 'CLOSED';
 
 interface WebSocketContextProps {
-  sendMessage: (message: object) => void;
-  wsState: string;
+  sendMessage: (msg: object) => void;
+  wsState: WsState;
   reconnect: () => void;
   wsUrl: string;
-  setWsUrl: (url: string) => void;
+  setWsUrl: React.Dispatch<React.SetStateAction<string>>;
   baseUrl: string;
-  setBaseUrl: (url: string) => void;
+  setBaseUrl: React.Dispatch<React.SetStateAction<string>>;
 }
 
-export const WebSocketContext = React.createContext<WebSocketContextProps>({
-  sendMessage: wsService.sendMessage.bind(wsService),
-  wsState: 'CLOSED',
-  reconnect: () => wsService.connect(DEFAULT_WS_URL),
-  wsUrl: DEFAULT_WS_URL,
-  setWsUrl: () => {},
-  baseUrl: DEFAULT_BASE_URL,
-  setBaseUrl: () => {},
-});
+const defaultWsUrl = 'ws://localhost:8000/ws';
+const defaultBaseUrl = 'http://localhost:8000';
 
-export function useWebSocket() {
-  const context = useContext(WebSocketContext);
-  if (!context) {
-    throw new Error('useWebSocket must be used within a WebSocketProvider');
-  }
-  return context;
-}
+export const WebSocketContext = createContext<WebSocketContextProps | undefined>(undefined);
 
-export const defaultWsUrl = DEFAULT_WS_URL;
-export const defaultBaseUrl = DEFAULT_BASE_URL;
+export const WebSocketProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const [wsState, setWsState] = useState<WsState>('CLOSED');
+  const [wsUrl, setWsUrl] = useState<string>(defaultWsUrl);
+  const [baseUrl, setBaseUrl] = useState<string>(defaultBaseUrl);
 
-export function WebSocketProvider({ children }: { children: React.ReactNode }) {
-  const [wsUrl, setWsUrl] = useLocalStorage('wsUrl', DEFAULT_WS_URL);
-  const [baseUrl, setBaseUrl] = useLocalStorage('baseUrl', DEFAULT_BASE_URL);
-  const handleSetWsUrl = useCallback((url: string) => {
-    setWsUrl(url);
-    wsService.connect(url);
-  }, [setWsUrl]);
+  useEffect(() => {
+    wsService.connect(wsUrl);
 
-  const value = {
-    sendMessage: wsService.sendMessage.bind(wsService),
-    wsState: 'CLOSED',
-    reconnect: () => wsService.connect(wsUrl),
-    wsUrl,
-    setWsUrl: handleSetWsUrl,
-    baseUrl,
-    setBaseUrl,
-  };
+    const stateSub = wsService.onStateChange(setWsState);
+    const msgSub = wsService.onMessage((msg: MessageEvent) => {
+      // Aquí puedes manejar mensajes globales si quieres
+      // O pasar a otros contextos o eventos
+      console.log('WS Global Message:', msg);
+    });
+
+    return () => {
+      stateSub.unsubscribe();
+      msgSub.unsubscribe();
+      wsService.disconnect();
+    };
+  }, [wsUrl]);
+
+  const sendMessage = useCallback((msg: object) => {
+    wsService.sendMessage(msg);
+  }, []);
+
+  const reconnect = useCallback(() => {
+    wsService.connect(wsUrl);
+  }, [wsUrl]);
 
   return (
-    <WebSocketContext.Provider value={value}>
+    <WebSocketContext.Provider value={{
+      sendMessage,
+      wsState,
+      reconnect,
+      wsUrl,
+      setWsUrl,
+      baseUrl,
+      setBaseUrl,
+    }}>
       {children}
     </WebSocketContext.Provider>
   );
-}
+};
+
+export const useWebSocket = (): WebSocketContextProps => {
+  const context = useContext(WebSocketContext);
+  if (!context) {
+    throw new Error('useWebSocket must be used within WebSocketProvider');
+  }
+  return context;
+};
+
+export { defaultWsUrl, defaultBaseUrl };

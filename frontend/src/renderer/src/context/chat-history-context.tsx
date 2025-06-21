@@ -1,12 +1,29 @@
 import {
   createContext, useContext, useState, useMemo, useCallback,
 } from 'react';
-import { Message } from '@/services/websocket-service';
-import { HistoryInfo } from './websocket-context';
+// import { Message } from '@/services/websocket-service'; // Ajusta la ruta según tu proyecto
+// Define Message and HistoryInfo types here if not exported from './websocket-context'
+export interface Message {
+  id: string;
+  content: string;
+  role: 'human' | 'ai';
+  timestamp: string;
+  name?: string;
+  avatar?: string;
+}
+
+export interface HistoryInfo {
+  uid: string;
+  latest_message: {
+    content: string;
+    role: 'human' | 'ai';
+    timestamp: string;
+  } | null;
+  timestamp: string;
+}
 
 /**
- * Chat history context state interface
- * @interface ChatHistoryState
+ * Estado y funciones del contexto de historial de chat
  */
 interface ChatHistoryState {
   messages: Message[];
@@ -28,7 +45,7 @@ interface ChatHistoryState {
 }
 
 /**
- * Default values and constants
+ * Valores iniciales por defecto
  */
 const DEFAULT_HISTORY = {
   messages: [] as Message[],
@@ -38,31 +55,20 @@ const DEFAULT_HISTORY = {
 };
 
 /**
- * Create the chat history context
+ * Contexto para el historial del chat
  */
 export const ChatHistoryContext = createContext<ChatHistoryState | null>(null);
 
 /**
- * Chat History Provider Component
- * @param {Object} props - Provider props
- * @param {React.ReactNode} props.children - Child components
+ * Proveedor del contexto de historial de chat
  */
 export function ChatHistoryProvider({ children }: { children: React.ReactNode }) {
-  // State management
   const [messages, setMessages] = useState<Message[]>(DEFAULT_HISTORY.messages);
-  const [historyList, setHistoryList] = useState<HistoryInfo[]>(
-    DEFAULT_HISTORY.historyList,
-  );
-  const [currentHistoryUid, setCurrentHistoryUid] = useState<string | null>(
-    DEFAULT_HISTORY.currentHistoryUid,
-  );
+  const [historyList, setHistoryList] = useState<HistoryInfo[]>(DEFAULT_HISTORY.historyList);
+  const [currentHistoryUid, setCurrentHistoryUid] = useState<string | null>(DEFAULT_HISTORY.currentHistoryUid);
   const [fullResponse, setFullResponse] = useState(DEFAULT_HISTORY.fullResponse);
   const [forceNewMessage, setForceNewMessage] = useState<boolean>(false);
 
-  /**
-   * Append a human message to the chat history
-   * @param content - Message content
-   */
   const appendHumanMessage = useCallback((content: string) => {
     const newMessage: Message = {
       id: Date.now().toString(),
@@ -73,17 +79,12 @@ export function ChatHistoryProvider({ children }: { children: React.ReactNode })
     setMessages((prevMessages) => [...prevMessages, newMessage]);
   }, []);
 
-  /**
-   * Append or update an AI message in the chat history
-   * @param content - Message content
-   */
   const appendAIMessage = useCallback((content: string, name?: string, avatar?: string) => {
     setMessages((prevMessages) => {
       const lastMessage = prevMessages[prevMessages.length - 1];
 
-      // If forceNewMessage is true or last message is not from AI, create new message
       if (forceNewMessage || !lastMessage || lastMessage.role !== 'ai') {
-        setForceNewMessage(false); // Reset the flag
+        setForceNewMessage(false);
         return [...prevMessages, {
           id: Date.now().toString(),
           content,
@@ -94,7 +95,6 @@ export function ChatHistoryProvider({ children }: { children: React.ReactNode })
         }];
       }
 
-      // Otherwise, merge with last AI message
       return [
         ...prevMessages.slice(0, -1),
         {
@@ -106,11 +106,6 @@ export function ChatHistoryProvider({ children }: { children: React.ReactNode })
     });
   }, [forceNewMessage, setForceNewMessage]);
 
-  /**
-   * Update the history list with the latest message
-   * @param uid - History unique identifier
-   * @param latestMessage - Latest message to update with
-   */
   const updateHistoryList = useCallback(
     (uid: string, latestMessage: Message | null) => {
       if (!uid) {
@@ -148,7 +143,6 @@ export function ChatHistoryProvider({ children }: { children: React.ReactNode })
     setFullResponse(DEFAULT_HISTORY.fullResponse);
   }, []);
 
-  // Memoized context value
   const contextValue = useMemo(
     () => ({
       messages,
@@ -188,8 +182,7 @@ export function ChatHistoryProvider({ children }: { children: React.ReactNode })
 }
 
 /**
- * Custom hook to use the chat history context
- * @throws {Error} If used outside of ChatHistoryProvider
+ * Hook para usar el contexto de historial de chat
  */
 export function useChatHistory() {
   const context = useContext(ChatHistoryContext);

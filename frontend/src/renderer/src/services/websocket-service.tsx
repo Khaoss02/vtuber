@@ -1,79 +1,16 @@
-/* eslint-disable no-use-before-define */
 import { Subject } from 'rxjs';
-import { ModelInfo } from '@/context/live2d-config-context';
-import { HistoryInfo } from '@/context/websocket-context';
-import { ConfigFile } from '@/context/character-config-context';
-import { toaster } from '@/components/ui/toaster';
-
-export interface DisplayText {
-  text: string;
-  name: string;
-  avatar: string;
-}
-
-interface BackgroundFile {
-  name: string;
-  url: string;
-}
-
-export interface AudioPayload {
-  type: 'audio';
-  audio?: string;
-  volumes?: number[];
-  slice_length?: number;
-  display_text?: DisplayText;
-  actions?: Actions;
-}
-
-export interface Message {
-  id: string;
-  content: string;
-  role: "ai" | "human";
-  timestamp: string;
-  name?: string;
-  avatar?: string;
-}
-
-export interface Actions {
-  expressions?: string[] | number [];
-  pictures?: string[];
-  sounds?: string[];
-}
+import { toaster } from '../components/ui/toaster';
 
 export interface MessageEvent {
   type: string;
-  audio?: string;
-  volumes?: number[];
-  slice_length?: number;
-  files?: BackgroundFile[];
-  actions?: Actions;
-  text?: string;
-  model_info?: ModelInfo;
-  conf_name?: string;
-  conf_uid?: string;
-  uids?: string[];
-  messages?: Message[];
-  history_uid?: string;
-  success?: boolean;
-  histories?: HistoryInfo[];
-  configs?: ConfigFile[];
-  message?: string;
-  members?: string[];
-  is_owner?: boolean;
-  client_uid?: string;
-  forwarded?: boolean;
-  display_text?: DisplayText;
+  [key: string]: any;
 }
 
 class WebSocketService {
   private static instance: WebSocketService;
-
   private ws: WebSocket | null = null;
-
   private messageSubject = new Subject<MessageEvent>();
-
   private stateSubject = new Subject<'CONNECTING' | 'OPEN' | 'CLOSING' | 'CLOSED'>();
-
   private currentState: 'CONNECTING' | 'OPEN' | 'CLOSING' | 'CLOSED' = 'CLOSED';
 
   static getInstance() {
@@ -83,27 +20,10 @@ class WebSocketService {
     return WebSocketService.instance;
   }
 
-  private initializeConnection() {
-    this.sendMessage({
-      type: 'fetch-backgrounds',
-    });
-    this.sendMessage({
-      type: 'fetch-configs',
-    });
-    this.sendMessage({
-      type: 'fetch-history-list',
-    });
-    this.sendMessage({
-      type: 'create-new-history',
-    });
-  }
-
   connect(url: string) {
-    if (this.ws?.readyState === WebSocket.CONNECTING ||
-        this.ws?.readyState === WebSocket.OPEN) {
+    if (this.ws && (this.ws.readyState === WebSocket.CONNECTING || this.ws.readyState === WebSocket.OPEN)) {
       this.disconnect();
     }
-
     try {
       this.ws = new WebSocket(url);
       this.currentState = 'CONNECTING';
@@ -112,7 +32,7 @@ class WebSocketService {
       this.ws.onopen = () => {
         this.currentState = 'OPEN';
         this.stateSubject.next('OPEN');
-        this.initializeConnection();
+        // Puedes enviar mensajes iniciales si quieres
       };
 
       this.ws.onmessage = (event) => {
@@ -120,10 +40,10 @@ class WebSocketService {
           const message = JSON.parse(event.data);
           this.messageSubject.next(message);
         } catch (error) {
-          console.error('Failed to parse WebSocket message:', error);
+          console.error('Error parsing WS message:', error);
           toaster.create({
             title: `Failed to parse WebSocket message: ${error}`,
-            type: "error",
+            type: 'error',
             duration: 2000,
           });
         }
@@ -139,7 +59,7 @@ class WebSocketService {
         this.stateSubject.next('CLOSED');
       };
     } catch (error) {
-      console.error('Failed to connect to WebSocket:', error);
+      console.error('WebSocket connection failed:', error);
       this.currentState = 'CLOSED';
       this.stateSubject.next('CLOSED');
     }
