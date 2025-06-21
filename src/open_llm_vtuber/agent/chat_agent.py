@@ -1,85 +1,95 @@
-"""ChatAgent with advanced memory and personality integration"""
+from pathlib import Path
+from typing import List
+from loguru import logger
 
-from __future__ import annotations
-import logging
-import os
-from typing import Optional, Dict, Any
+from llama_index.core import Settings, StorageContext, load_index_from_storage
+from llama_index.core.indices.vector_store.base import GPTVectorStoreIndex
+from llama_index.core.indices.prompt_helper import PromptHelper
+from llama_index.core.readers import SimpleDirectoryReader
+from llama_index.embeddings.huggingface import HuggingFaceEmbedding
 
-from llama_index import GPTSimpleVectorIndex, LLMPredictor, PromptHelper, ServiceContext
-from llama_index.llms.openai import OpenAI
+from .chat_hf_local import HFLocalChat
+from .hf_multimodal import HFScreenAgent  # Si lo necesitas en chat_agent, sino importalo en run_server.py
 
-from open_llm_vtuber.memory.memory_manager import MemoryManager
-from open_llm_vtuber.personality import Personality
 
-logger = logging.getLogger(__name__)
+DEFAULT_DOCS_DIR: Path = Path("data") / "knowledge"
+DEFAULT_INDEX_DIR: Path = Path("data") / "index"
+
 
 class ChatAgent:
+    """
+    Agente de conversación con:
+      • RAG sobre documentos locales (GPTVectorStoreIndex)
+      • Embeddings HF (bge-small-en-v1.5 - 133 MB)
+      • LLM multimodal local Qwen 2.5-VL-3B-Instruct
+    """
+
     def __init__(
         self,
-        index_path: str = "index.json",
-        openai_api_key: Optional[str] = None,
-        episodic_path: str = "src/open_llm_vtuber/data/episodic_memory.json",
-        semantic_path: str = "src/open_llm_vtuber/data/semantic_memory.json",
-        semantic_emb_path: str = "src/open_llm_vtuber/data/semantic_embeddings.pt",
-        summary_path: str = "src/open_llm_vtuber/data/summary_memory.json",
+        docs_dir: Path = DEFAULT_DOCS_DIR,
+        index_dir: Path = DEFAULT_INDEX_DIR,
+        hf_llm_name: str = "Qwen/Qwen2.5-VL-3B-Instruct",
+        hf_embed_name: str = "BAAI/bge-small-en-v1.5",
     ) -> None:
-        if openai_api_key:
-            os.environ["OPENAI_API_KEY"] = openai_api_key
 
-        ph = PromptHelper(4096, 512, 20)
-        llmp = LLMPredictor(llm=OpenAI(temperature=0.7, model_name="gpt-4o-mini"))
-        self.service_ctx = ServiceContext.from_defaults(
-            llm_predictor=llmp, prompt_helper=ph
+        # Forzamos device cpu para embeddings para evitar error meta tensor
+        Settings.embed_model = HuggingFaceEmbedding(
+            model_name=hf_embed_name,
+            device="cpu",
         )
 
-        try:
-            self.index = GPTSimpleVectorIndex.load_from_disk(
-                index_path, service_context=self.service_ctx
-            )
-            logger.info("Vector index loaded.")
-        except Exception as e:
-            logger.warning("No vector index: %s", e)
-            self.index = None
-
-        self.memory = MemoryManager(
-            episodic_path, semantic_path, semantic_emb_path, summary_path
+        Settings.prompt_helper = PromptHelper(
+            context_window=4096,
+            num_output=512,
+            chunk_overlap_ratio=0.10,
         )
-        self.personality = Personality()
 
-    def chat(
-        self,
-        user_input: str,
-        context: Optional[Dict[str, Any]] = None
-    ) -> str:
-        summary = self.memory.latest_summary()
-        profile = self.memory.latest_profile()
+        # Cargamos el LLM local sin hacer .to() manual
+        self.llm = HFLocalChat(model_name=hf_llm_name)
 
-        enriched = ""
-        if profile:
-            enriched += f"VTuber profile:\n{profile['profile']}\n\n"
-        if summary:
-            enriched += f"Recent summary:\n{summary}\n\n"
-        enriched += f"User says: {user_input}\nVTuber responds:"
+        docs_dir.mkdir(parents=True, exist_ok=True)
+        index_dir.mkdir(parents=True, exist_ok=True)
+        self.storage_context = StorageContext.from_defaults(persist_dir=str(index_dir))
 
-        if self.index:
-            try:
-                resp = self.index.query(enriched)
-                text = resp.response
-            except Exception:
-                text = self._call_llm(enriched)
+        if any(index_dir.iterdir()):
+            logger.info("Cargando índice vectorial existente…")
+            self.index = load_index_from_storage(self.storage_context)
         else:
-            text = self._call_llm(enriched)
+            logger.info("Creando índice vectorial nuevo…")
+            documents = self._load_docs(docs_dir)
+            self.index = GPTVectorStoreIndex.from_documents(
+                documents, storage_context=self.storage_context
+            )
+            self.storage_context.persist()
 
-        styled = self.personality.apply_personality_to_response(text)
+    def chat(self, message: str) -> str:
+        # 1) Recuperamos contexto relevante
+        nodes = self.index.as_retriever(similarity_top_k=3).retrieve(message)
+        context = "\n\n".join(node.get_content() for node in nodes)
 
-        episode = {
-            "user_input": user_input,
-            "ai_response": styled,
-            "context": context or {}
-        }
-        self.memory.save_episode(episode)
+        # 2) Construimos prompt para el modelo
+        prompt = (
+            "### Contexto\n"
+            f"{context}\n\n"
+            "### Pregunta\n"
+            f"{message}\n\n"
+            "### Respuesta (en español):"
+        )
 
-        return styled
+        # 3) Generamos respuesta con el LLM local
+        return self.llm.chat(prompt)
 
-    def _call_llm(self, prompt: str) -> str:
-        return self.service_ctx.llm_predictor.llm.complete(prompt).text
+    def add_documents(self, paths: List[Path]) -> None:
+        new_docs = []
+        for p in paths:
+            new_docs.extend(SimpleDirectoryReader(str(p)).load_data())
+        self.index.insert_nodes(new_docs)
+        self.storage_context.persist()
+
+    @staticmethod
+    def _load_docs(docs_dir: Path):
+        if any(docs_dir.iterdir()):
+            logger.info(f"Cargando documentos desde {docs_dir}")
+            return SimpleDirectoryReader(str(docs_dir)).load_data()
+        logger.warning(f"{docs_dir} está vacío; índice sin documentos.")
+        return []

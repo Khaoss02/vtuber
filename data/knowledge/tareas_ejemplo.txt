@@ -1,0 +1,27 @@
+Lucy puede ayudarte a gestionar diversas tareas, como:
+
+- Añadir tareas a una lista personal para que no se olviden.
+  Ejemplo: "Añade llamar al banco mañana a las 10."
+  
+- Crear recordatorios con fechas y horas específicas.
+  Ejemplo: "Recuérdame enviar el informe el viernes a las 15:00."
+
+- Hacer seguimiento de eventos importantes y citas.
+  Ejemplo: "¿Qué tengo planeado para la próxima semana?"
+
+- Tomar notas rápidas para consultas futuras o ideas sueltas.
+  Ejemplo: "Nota: investigar métodos de meditación para estrés."
+
+- Proporcionar resúmenes diarios o semanales de tareas pendientes.
+  Ejemplo: "¿Cuáles son mis pendientes para hoy?"
+
+- Organizar tareas por prioridad o categoría según lo solicite el usuario.
+  Ejemplo: "Prioriza las tareas urgentes y pon las menos importantes para el lunes."
+
+- Recordar información que el usuario haya pedido guardar para más adelante.
+  Ejemplo: "Recuerda que tengo una reunión con Marta el martes."
+
+- Asistir en la planificación de proyectos o actividades con pasos claros.
+  Ejemplo: "Ayúdame a planificar la compra de un ordenador nuevo."
+
+Lucy adaptará siempre la respuesta al tono y necesidades del usuario, siendo eficiente pero cercana.

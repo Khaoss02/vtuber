@@ -118,5 +118,5 @@ class TTSFactory:
 
 
 # Example usage:
-# tts_engine = TTSFactory.get_tts_engine("azure", api_key="your_api_key", region="your_region", voice="your_voice")
-# tts_engine.speak("Hello world")
+# tts_engine = TTSFactory.get_tts_engine("coqui_tts", model_name="tts_models/en/ljspeech/tacotron2-DDC", device="cuda")
+# tts_engine.generate_audio("Hola, soy Lucy, tu asistente virtual.")

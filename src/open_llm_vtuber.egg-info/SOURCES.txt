@@ -23,6 +23,8 @@ src/open_llm_vtuber/agent/__init__.py
 src/open_llm_vtuber/agent/agent_factory.py
 src/open_llm_vtuber/agent/agent_runner.py
 src/open_llm_vtuber/agent/chat_agent.py
+src/open_llm_vtuber/agent/chat_hf_local.py
+src/open_llm_vtuber/agent/hf_multimodal.py
 src/open_llm_vtuber/agent/input_types.py
 src/open_llm_vtuber/agent/output_types.py
 src/open_llm_vtuber/agent/stateless_llm_factory.py
